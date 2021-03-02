@@ -1,4 +1,4 @@
-package pq
+package ogpq
 
 // This file contains SSL tests
 
@@ -26,7 +26,7 @@ func maybeSkipSSLTests(t *testing.T) {
 }
 
 func openSSLConn(t *testing.T, conninfo string) (*sql.DB, error) {
-	db, err := openTestConnConninfo(conninfo)
+	db, err := openTestConnConnInfo(conninfo)
 	if err != nil {
 		// should never fail
 		t.Fatal(err)

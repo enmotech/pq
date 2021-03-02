@@ -1,4 +1,4 @@
-package pq
+package ogpq
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lib/pq/oid"
+	"github.com/enmotech/ogpq/oid"
 )
 
 func TestScanTimestamp(t *testing.T) {
@@ -120,7 +120,7 @@ func TestParseTsErrors(t *testing.T) {
 // Now test that sending the value into the database and parsing it back
 // returns the same time.Time value.
 func TestEncodeAndParseTs(t *testing.T) {
-	db, err := openTestConnConninfo("timezone='Etc/UTC'")
+	db, err := openTestConnConnInfo("timezone='Etc/UTC'")
 	if err != nil {
 		t.Fatal(err)
 	}

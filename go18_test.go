@@ -1,9 +1,8 @@
-package pq
+package ogpq
 
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"runtime"
 	"strings"
 	"testing"
@@ -143,7 +142,7 @@ func TestContextCancelQuery(t *testing.T) {
 			cancel()
 			if err != nil {
 				t.Fatal(err)
-			} else if err := rows.Close(); err != nil && err != driver.ErrBadConn {
+			} else if err := rows.Close(); err != nil {
 				t.Fatal(err)
 			}
 		}()
@@ -177,26 +176,13 @@ func TestIssue617(t *testing.T) {
 			}
 		}()
 	}
+	numGoroutineFinish := runtime.NumGoroutine()
 
-	// Give time for goroutines to terminate
-	delayTime := time.Millisecond * 50
-	waitTime := time.Second
-	iterations := int(waitTime / delayTime)
-
-	var numGoroutineFinish int
-	for i := 0; i < iterations; i++ {
-		time.Sleep(delayTime)
-
-		numGoroutineFinish = runtime.NumGoroutine()
-
-		// We use N/2 and not N because the GC and other actors may increase or
-		// decrease the number of goroutines.
-		if numGoroutineFinish-numGoroutineStart < N/2 {
-			return
-		}
+	// We use N/2 and not N because the GC and other actors may increase or
+	// decrease the number of goroutines.
+	if numGoroutineFinish-numGoroutineStart >= N/2 {
+		t.Errorf("goroutine leak detected, was %d, now %d", numGoroutineStart, numGoroutineFinish)
 	}
-
-	t.Errorf("goroutine leak detected, was %d, now %d", numGoroutineStart, numGoroutineFinish)
 }
 
 func TestContextCancelBegin(t *testing.T) {
@@ -242,7 +228,7 @@ func TestContextCancelBegin(t *testing.T) {
 				t.Fatal(err)
 			} else if err := tx.Rollback(); err != nil &&
 				err.Error() != "pq: canceling statement due to user request" &&
-				err != sql.ErrTxDone && err != driver.ErrBadConn {
+				err != sql.ErrTxDone {
 				t.Fatal(err)
 			}
 		}()

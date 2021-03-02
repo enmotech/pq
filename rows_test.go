@@ -1,11 +1,11 @@
-package pq
+package ogpq
 
 import (
 	"math"
 	"reflect"
 	"testing"
 
-	"github.com/lib/pq/oid"
+	"github.com/enmotech/ogpq/oid"
 )
 
 func TestDataTypeName(t *testing.T) {

@@ -1,4 +1,4 @@
-package pq
+package ogpq
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"os"
 	"reflect"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -30,7 +29,7 @@ func forceBinaryParameters() bool {
 	}
 }
 
-func testConninfo(conninfo string) string {
+func testConnInfo(connInfo string) string {
 	defaultTo := func(envvar string, value string) {
 		if os.Getenv(envvar) == "" {
 			os.Setenv(envvar, value)
@@ -41,19 +40,19 @@ func testConninfo(conninfo string) string {
 	defaultTo("PGCONNECT_TIMEOUT", "20")
 
 	if forceBinaryParameters() &&
-		!strings.HasPrefix(conninfo, "postgres://") &&
-		!strings.HasPrefix(conninfo, "postgresql://") {
-		conninfo += " binary_parameters=yes"
+		!strings.HasPrefix(connInfo, "postgres://") &&
+		!strings.HasPrefix(connInfo, "postgresql://") {
+		connInfo += " binary_parameters=yes"
 	}
-	return conninfo
+	return connInfo
 }
 
-func openTestConnConninfo(conninfo string) (*sql.DB, error) {
-	return sql.Open("postgres", testConninfo(conninfo))
+func openTestConnConnInfo(connInfo string) (*sql.DB, error) {
+	return sql.Open("postgres", testConnInfo(connInfo))
 }
 
 func openTestConn(t Fatalistic) *sql.DB {
-	conn, err := openTestConnConninfo("")
+	conn, err := openTestConnConnInfo("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +123,7 @@ func TestCommitInFailedTransaction(t *testing.T) {
 
 func TestOpenURL(t *testing.T) {
 	testURL := func(url string) {
-		db, err := openTestConnConninfo(url)
+		db, err := openTestConnConnInfo(url)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -132,12 +131,14 @@ func TestOpenURL(t *testing.T) {
 		// database/sql might not call our Open at all unless we do something with
 		// the connection
 		txn, err := db.Begin()
+		_, err = db.Exec("select 1")
+		
 		if err != nil {
 			t.Fatal(err)
 		}
 		txn.Rollback()
 	}
-	testURL("postgres://")
+	testURL("postgres://test:Abc@123456@127.0.0.1:5433/postgres?protocolVersion=351")
 	testURL("postgresql://")
 }
 
@@ -149,7 +150,7 @@ func TestPgpass(t *testing.T) {
 	}
 
 	testAssert := func(conninfo string, expected string, reason string) {
-		conn, err := openTestConnConninfo(conninfo)
+		conn, err := openTestConnConnInfo(conninfo)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -623,7 +624,7 @@ func TestNoData(t *testing.T) {
 func TestErrorDuringStartup(t *testing.T) {
 	// Don't use the normal connection setup, this is intended to
 	// blow up in the startup packet from a non-existent user.
-	db, err := openTestConnConninfo("user=thisuserreallydoesntexist")
+	db, err := openTestConnConnInfo("user=thisuserreallydoesntexist")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -635,6 +636,7 @@ func TestErrorDuringStartup(t *testing.T) {
 	}
 
 	e, ok := err.(*Error)
+	fmt.Println(e)
 	if !ok {
 		t.Fatalf("expected Error, got %#v", err)
 	} else if e.Code.Name() != "invalid_authorization_specification" && e.Code.Name() != "invalid_password" {
@@ -680,7 +682,7 @@ func TestErrorDuringStartupClosesConn(t *testing.T) {
 	// Don't use the normal connection setup, this is intended to
 	// blow up in the startup packet from a non-existent user.
 	var d testDialer
-	c, err := DialOpen(&d, testConninfo("user=thisuserreallydoesntexist"))
+	c, err := DialOpen(&d, testConnInfo("user=thisuserreallydoesntexist"))
 	if err == nil {
 		c.Close()
 		t.Fatal("expected dial error")
@@ -696,9 +698,7 @@ func TestErrorDuringStartupClosesConn(t *testing.T) {
 func TestBadConn(t *testing.T) {
 	var err error
 
-	bad := &atomic.Value{}
-	bad.Store(false)
-	cn := conn{bad: bad}
+	cn := conn{}
 	func() {
 		defer cn.errRecover(&err)
 		panic(io.EOF)
@@ -706,13 +706,11 @@ func TestBadConn(t *testing.T) {
 	if err != driver.ErrBadConn {
 		t.Fatalf("expected driver.ErrBadConn, got: %#v", err)
 	}
-	if !cn.getBad() {
+	if !cn.bad {
 		t.Fatalf("expected cn.bad")
 	}
 
-	badd := &atomic.Value{}
-	badd.Store(false)
-	cn = conn{bad: badd}
+	cn = conn{}
 	func() {
 		defer cn.errRecover(&err)
 		e := &Error{Severity: Efatal}
@@ -721,7 +719,7 @@ func TestBadConn(t *testing.T) {
 	if err != driver.ErrBadConn {
 		t.Fatalf("expected driver.ErrBadConn, got: %#v", err)
 	}
-	if !cn.getBad() {
+	if !cn.bad {
 		t.Fatalf("expected cn.bad")
 	}
 }
@@ -1487,7 +1485,7 @@ func TestRuntimeParameters(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		db, err := openTestConnConninfo(test.conninfo)
+		db, err := openTestConnConnInfo(test.conninfo)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1645,6 +1643,10 @@ func TestRowsResultTag(t *testing.T) {
 		{
 			query: "CREATE TEMP TABLE t (a int); DROP TABLE t; SELECT 1",
 		},
+		// Verify that an no-results query doesn't set the tag.
+		{
+			query: "CREATE TEMP TABLE t (a int); SELECT 1 WHERE FALSE; DROP TABLE t;",
+		},
 	}
 
 	// If this is the only test run, this will correct the connection string.
@@ -1746,36 +1748,6 @@ func TestMultipleResult(t *testing.T) {
 	}
 	if buf[0].rowCount != 1 || buf[1].rowCount != 2 {
 		t.Fatal("incorrect number of rows returned")
-	}
-}
-
-func TestMultipleEmptyResult(t *testing.T) {
-	db := openTestConn(t)
-	defer db.Close()
-
-	rows, err := db.Query("select 1 where false; select 2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		t.Fatal("unexpected row")
-	}
-	if !rows.NextResultSet() {
-		t.Fatal("expected more result sets", rows.Err())
-	}
-	for rows.Next() {
-		var i int
-		if err := rows.Scan(&i); err != nil {
-			t.Fatal(err)
-		}
-		if i != 2 {
-			t.Fatalf("expected 2, got %d", i)
-		}
-	}
-	if rows.NextResultSet() {
-		t.Fatal("unexpected result set")
 	}
 }
 

@@ -1,6 +1,6 @@
 // +build go1.10
 
-package pq
+package ogpq
 
 import (
 	"database/sql"

@@ -1,4 +1,4 @@
-package pq
+package ogpq
 
 import (
 	"bufio"
@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lib/pq/oid"
+	"github.com/enmotech/ogpq/oid"
 )
 
 var (

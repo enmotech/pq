@@ -1,8 +1,8 @@
-// Package pq is a pure Go Postgres driver for the database/sql package.
+// package ogpq is a pure Go Postgres driver for the database/sql package.
 
 // +build aix darwin dragonfly freebsd linux nacl netbsd openbsd plan9 solaris rumprun
 
-package pq
+package ogpq
 
 import (
 	"os"

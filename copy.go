@@ -1,4 +1,4 @@
-package pq
+package ogpq
 
 import (
 	"database/sql/driver"
@@ -176,13 +176,13 @@ func (ci *copyin) resploop() {
 
 func (ci *copyin) setBad() {
 	ci.Lock()
-	ci.cn.setBad()
+	ci.cn.bad = true
 	ci.Unlock()
 }
 
 func (ci *copyin) isBad() bool {
 	ci.Lock()
-	b := ci.cn.getBad()
+	b := ci.cn.bad
 	ci.Unlock()
 	return b
 }

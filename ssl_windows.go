@@ -1,6 +1,6 @@
 // +build windows
 
-package pq
+package ogpq
 
 // sslKeyPermissions checks the permissions on user-supplied ssl key files.
 // The key file should have very little access.

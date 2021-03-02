@@ -1,6 +1,6 @@
 // +build go1.9
 
-package pq
+package ogpq
 
 import (
 	"context"

@@ -1,10 +1,10 @@
-package pq
+package ogpq
 
 import (
 	"bytes"
 	"encoding/binary"
 
-	"github.com/lib/pq/oid"
+	"github.com/enmotech/ogpq/oid"
 )
 
 type readBuf []byte

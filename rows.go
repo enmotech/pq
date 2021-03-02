@@ -1,11 +1,11 @@
-package pq
+package ogpq
 
 import (
 	"math"
 	"reflect"
 	"time"
 
-	"github.com/lib/pq/oid"
+	"github.com/enmotech/ogpq/oid"
 )
 
 const headerSize = 4
