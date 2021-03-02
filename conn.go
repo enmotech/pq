@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"crypto/md5"
-	"crypto/sha256"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/binary"
@@ -22,8 +21,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/lib/pq/oid"
-	"github.com/lib/pq/scram"
+	"github.com/enmotech/pq/oid"
 )
 
 // Common error types
@@ -55,7 +53,7 @@ func (d Driver) Open(name string) (driver.Conn, error) {
 }
 
 func init() {
-	sql.Register("postgres", &Driver{})
+	sql.Register("opengauss", &Driver{})
 }
 
 type parameterStatus struct {
@@ -120,13 +118,14 @@ func (d defaultDialer) DialContext(ctx context.Context, network, address string)
 }
 
 type conn struct {
-	c         net.Conn
-	buf       *bufio.Reader
-	namei     int
-	scratch   [512]byte
-	txnStatus transactionStatus
-	txnFinish func()
-
+	c                 net.Conn
+	buf               *bufio.Reader
+	namei             int
+	scratch           []byte
+	txnStatus         transactionStatus
+	txnFinish         func()
+	minReadBufferSize int64
+	cpBufferSize      int64
 	// Save connection arguments to use during CancelRequest.
 	dialer Dialer
 	opts   values
@@ -299,18 +298,44 @@ func (c *Connector) open(ctx context.Context) (cn *conn, err error) {
 	defer errRecoverNoErrBadConn(&err)
 
 	o := c.opts
+	handler := func(s string, val *int64, def int64) error {
+		var bufferSize int64
+		var err error
+		if minReadBuffer, ok := o[s]; !ok {
+			bufferSize = def
+		} else {
+			bufferSize, err = strconv.ParseInt(minReadBuffer, 10, 32)
+			if err != nil {
+				return fmt.Errorf("cannot parse %s err %s", s, err)
+			}
+			delete(o, s)
+		}
+		*val = bufferSize
+
+		return nil
+	}
 
 	bad := &atomic.Value{}
 	bad.Store(false)
+
 	cn = &conn{
 		opts:   o,
 		dialer: c.dialer,
 		bad:    bad,
 	}
+	if err = handler("min_read_buffer_size", &cn.minReadBufferSize, 8192); err != nil {
+		return nil, err
+	}
+	if err = handler("cp_buffer_size", &cn.cpBufferSize, 1024*1024); err != nil {
+		return nil, err
+	}
+	cn.scratch = make([]byte, cn.minReadBufferSize)
+
 	err = cn.handleDriverSettings(o)
 	if err != nil {
 		return nil, err
 	}
+
 	cn.handlePgpass(o)
 
 	cn.c, err = dial(ctx, c.dialer, o)
@@ -1121,7 +1146,8 @@ func isDriverSetting(key string) bool {
 
 func (cn *conn) startup(o values) {
 	w := cn.writeBuf(0)
-	w.int32(196608)
+	// w.int32(196608)
+	w.int32(196659)
 	// Send the backend the name of the database we want to connect to, and the
 	// user we want to connect as.  Additionally, we send over any run-time
 	// parameters potentially included in the connection string.  If the server
@@ -1195,7 +1221,7 @@ func (cn *conn) auth(r *readBuf, o values) {
 		}
 	case 7: // GSSAPI, startup
 		if newGss == nil {
-			errorf("kerberos error: no GSSAPI provider registered (import github.com/lib/pq/auth/kerberos if you need Kerberos support)")
+			errorf("kerberos error: no GSSAPI provider registered (import github.com/enmotech/pq/auth/kerberos if you need Kerberos support)")
 		}
 		cli, err := newGss()
 		if err != nil {
@@ -1245,54 +1271,106 @@ func (cn *conn) auth(r *readBuf, o values) {
 
 		// Errors fall through and read the more detailed message
 		// from the server..
+	// case 10:
+	// 	sc := scram.NewClient(sha256.New, o["user"], o["password"])
+	// 	sc.Step(nil)
+	// 	if sc.Err() != nil {
+	// 		errorf("SCRAM-SHA-256 error: %s", sc.Err().Error())
+	// 	}
+	// 	scOut := sc.Out()
+	//
+	// 	w := cn.writeBuf('p')
+	// 	w.string("SCRAM-SHA-256")
+	// 	w.int32(len(scOut))
+	// 	w.bytes(scOut)
+	// 	cn.send(w)
+	//
+	// 	t, r := cn.recv()
+	// 	if t != 'R' {
+	// 		errorf("unexpected password response: %q", t)
+	// 	}
+	//
+	// 	if r.int32() != 11 {
+	// 		errorf("unexpected authentication response: %q", t)
+	// 	}
+	//
+	// 	nextStep := r.next(len(*r))
+	// 	sc.Step(nextStep)
+	// 	if sc.Err() != nil {
+	// 		errorf("SCRAM-SHA-256 error: %s", sc.Err().Error())
+	// 	}
+	//
+	// 	scOut = sc.Out()
+	// 	w = cn.writeBuf('p')
+	// 	w.bytes(scOut)
+	// 	cn.send(w)
+	//
+	// 	t, r = cn.recv()
+	// 	if t != 'R' {
+	// 		errorf("unexpected password response: %q", t)
+	// 	}
+	//
+	// 	if r.int32() != 12 {
+	// 		errorf("unexpected authentication response: %q", t)
+	// 	}
+	//
+	// 	nextStep = r.next(len(*r))
+	// 	sc.Step(nextStep)
+	// 	if sc.Err() != nil {
+	// 		errorf("SCRAM-SHA-256 error: %s", sc.Err().Error())
+	// 	}
 
 	case 10:
-		sc := scram.NewClient(sha256.New, o["user"], o["password"])
-		sc.Step(nil)
-		if sc.Err() != nil {
-			errorf("SCRAM-SHA-256 error: %s", sc.Err().Error())
+		// 这里在openGuass为sha256加密办法，主要代码流程来自jdbc相关实现
+		passwordStoredMethod := r.int32()
+		digest := ""
+		if len(o["password"]) == 0 {
+			errorf("The server requested password-based authentication, but no password was provided.")
 		}
-		scOut := sc.Out()
+		if passwordStoredMethod == 0 || passwordStoredMethod == 2 {
+			random64code := string(r.next(64))
+			token := string(r.next(8))
+			serverIteration := r.int32()
+			result := RFC5802Algorithm(o["password"], random64code, token, "", serverIteration)
+			if len(result) == 0 {
+				errorf("Invalid username/password,login denied.")
+			}
+			w := cn.writeBuf('p')
+			w.buf = []byte("p")
+			w.pos = 1
+			w.int32(4 + len(result) + 1)
+			w.bytes(result)
+			w.byte(0)
+			cn.send(w)
 
-		w := cn.writeBuf('p')
-		w.string("SCRAM-SHA-256")
-		w.int32(len(scOut))
-		w.bytes(scOut)
-		cn.send(w)
+			t, r := cn.recv()
 
-		t, r := cn.recv()
-		if t != 'R' {
-			errorf("unexpected password response: %q", t)
-		}
+			if t != 'R' {
+				errorf("unexpected password response: %q", t)
+			}
 
-		if r.int32() != 11 {
-			errorf("unexpected authentication response: %q", t)
-		}
+			if r.int32() != 0 {
+				errorf("unexpected authentication response: %q", t)
+			}
+			// return
+		} else if passwordStoredMethod == 1 {
+			s := string(r.next(4))
+			digest = "md5" + md5s(md5s(o["password"]+o["user"])+s)
+			w := cn.writeBuf('p')
+			w.int16(4 + len(digest) + 1)
+			w.string(digest)
+			w.byte(0)
+			cn.send(w)
+			t, r := cn.recv()
+			if t != 'R' {
+				errorf("unexpected password response: %q", t)
+			}
 
-		nextStep := r.next(len(*r))
-		sc.Step(nextStep)
-		if sc.Err() != nil {
-			errorf("SCRAM-SHA-256 error: %s", sc.Err().Error())
-		}
-
-		scOut = sc.Out()
-		w = cn.writeBuf('p')
-		w.bytes(scOut)
-		cn.send(w)
-
-		t, r = cn.recv()
-		if t != 'R' {
-			errorf("unexpected password response: %q", t)
-		}
-
-		if r.int32() != 12 {
-			errorf("unexpected authentication response: %q", t)
-		}
-
-		nextStep = r.next(len(*r))
-		sc.Step(nextStep)
-		if sc.Err() != nil {
-			errorf("SCRAM-SHA-256 error: %s", sc.Err().Error())
+			if r.int32() != 0 {
+				errorf("unexpected authentication response: %q", t)
+			}
+		} else {
+			errorf("The  password-stored method is not supported ,must be plain , md5 or sha256.")
 		}
 
 	default:

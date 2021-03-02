@@ -49,7 +49,7 @@ func testConninfo(conninfo string) string {
 }
 
 func openTestConnConninfo(conninfo string) (*sql.DB, error) {
-	return sql.Open("postgres", testConninfo(conninfo))
+	return sql.Open("opengauss", testConninfo(conninfo))
 }
 
 func openTestConn(t Fatalistic) *sql.DB {

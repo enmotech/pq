@@ -45,10 +45,11 @@ func CopyInSchema(schema, table string, columns ...string) string {
 }
 
 type copyin struct {
-	cn      *conn
-	buffer  []byte
-	rowData chan []byte
-	done    chan bool
+	cn           *conn
+	buffer       []byte
+	cpBufferSize int64
+	rowData      chan []byte
+	done         chan bool
 	driver.Result
 
 	closed bool
@@ -66,12 +67,16 @@ func (cn *conn) prepareCopyIn(q string) (_ driver.Stmt, err error) {
 	if !cn.isInTransaction() {
 		return nil, errCopyNotSupportedOutsideTxn
 	}
-
+	cpBufferSize := cn.cpBufferSize
+	if cpBufferSize == 0 {
+		cpBufferSize = ciBufferSize
+	}
 	ci := &copyin{
-		cn:      cn,
-		buffer:  make([]byte, 0, ciBufferSize),
-		rowData: make(chan []byte),
-		done:    make(chan bool, 1),
+		cn:           cn,
+		buffer:       make([]byte, 0, cpBufferSize),
+		cpBufferSize: cpBufferSize,
+		rowData:      make(chan []byte),
+		done:         make(chan bool, 1),
 	}
 	// add CopyData identifier + 4 bytes for message length
 	ci.buffer = append(ci.buffer, 'd', 0, 0, 0, 0)
@@ -267,7 +272,7 @@ func (ci *copyin) Exec(v []driver.Value) (r driver.Result, err error) {
 
 	ci.buffer = append(ci.buffer, '\n')
 
-	if len(ci.buffer) > ciBufferFlushSize {
+	if len(ci.buffer) > int(ci.cpBufferSize-1024) {
 		ci.flush(ci.buffer)
 		// reset buffer, keep bytes for message identifier and length
 		ci.buffer = ci.buffer[:5]

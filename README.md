@@ -1,10 +1,10 @@
 # pq - A pure Go postgres driver for Go's database/sql package
 
-[![GoDoc](https://godoc.org/github.com/lib/pq?status.svg)](https://pkg.go.dev/github.com/lib/pq?tab=doc)
+[![GoDoc](https://godoc.org/github.com/enmotech/pq?status.svg)](https://pkg.go.dev/github.com/enmotech/pq?tab=doc)
 
 ## Install
 
-	go get github.com/lib/pq
+	go get github.com/enmotech/pq
 
 ## Features
 
@@ -20,6 +20,27 @@
 * Notifications: `LISTEN`/`NOTIFY`
 * pgpass support
 * GSS (Kerberos) auth
+
+## Example
+```
+import (
+	"database/sql"
+
+	_ "github.com/enmotech/pq"
+)
+
+func main() {
+	connStr := "user=pqgotest dbname=pqgotest sslmode=verify-full"
+	db, err := sql.Open("opengauss", connStr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	age := 21
+	rows, err := db.Query("SELECT name FROM users WHERE age = $1", age)
+	…
+}
+```
 
 ## Tests
 

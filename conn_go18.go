@@ -142,6 +142,7 @@ func (cn *conn) cancel(ctx context.Context) error {
 			c:   c,
 			bad: bad,
 		}
+		can.scratch = make([]byte, cn.minReadBufferSize)
 		err = can.ssl(cn.opts)
 		if err != nil {
 			return err

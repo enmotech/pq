@@ -1,4 +1,4 @@
-module github.com/lib/pq/auth/kerberos
+module github.com/enmotech/pq/auth/kerberos
 
 go 1.13
 
