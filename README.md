@@ -1,6 +1,6 @@
-# pq - A pure Go postgres driver for Go's database/sql package
+# pq - A pure Go openGauss driver for Go's database/sql package
 
-[![GoDoc](https://godoc.org/github.com/enmotech/pq?status.svg)](https://pkg.go.dev/github.com/enmotech/pq?tab=doc)
+fork from [github/lib/pq](https://github/lib/pq)
 
 ## Install
 
@@ -8,6 +8,7 @@
 
 ## Features
 
+* Adapt OpenGauss SHA256 password authentication
 * SSL
 * Handles bad connections for `database/sql`
 * Scan `time.Time` correctly (i.e. `timestamp[tz]`, `time[tz]`, `date`)
@@ -20,6 +21,7 @@
 * Notifications: `LISTEN`/`NOTIFY`
 * pgpass support
 * GSS (Kerberos) auth
+
 
 ## Example
 ```
@@ -46,6 +48,3 @@ func main() {
 
 `go test` is used for testing.  See [TESTS.md](TESTS.md) for more details.
 
-## Status
-
-This package is effectively in maintenance mode and is not actively developed. Small patches and features are only rarely reviewed and merged. We recommend using [pgx](https://github.com/jackc/pgx) which is actively maintained.
