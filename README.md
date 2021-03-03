@@ -8,7 +8,7 @@ fork from [github/lib/pq](https://github/lib/pq)
 
 ## Features
 
-* Adapt OpenGauss SHA256 password authentication
+* Adapt openGauss SHA256 password authentication
 * SSL
 * Handles bad connections for `database/sql`
 * Scan `time.Time` correctly (i.e. `timestamp[tz]`, `time[tz]`, `date`)
