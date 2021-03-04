@@ -17,8 +17,8 @@ The reason is that openGauss default user connection password authentication met
 ```
 alter system set password_encryption_type=0;
 ```
-3. Set pg_hba.conf to allow md5 password verification: host all test 0.0.0.0/0 md5
-4. Create a new user in database, then connect by this user.
+2. Set pg_hba.conf to allow md5 password verification: host all test 0.0.0.0/0 md5
+3. Create a new user in database, then connect by this user.
 
 We still prefer to use a more secure encryption method like sha256, so the modified libpq can be directly compatible with sha256.
 
